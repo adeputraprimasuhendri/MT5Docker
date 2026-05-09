@@ -24,9 +24,14 @@ RUN dpkg --add-architecture i386 && \
     && apt-get install -y --install-recommends winehq-staging \
     && rm -rf /var/lib/apt/lists/*
 
+RUN pip3 install websocket-client pillow
+
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY start.sh /start.sh
 COPY init_wine.sh /init_wine.sh
+COPY DataPublisher.mq5 /root/DataPublisher.mq5
+COPY mt5_ws_client.py /mt5_ws_client.py
+COPY mt5_config.ini /root/mt5_config.ini
 
 RUN chmod +x /start.sh /init_wine.sh
 

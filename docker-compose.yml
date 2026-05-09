@@ -1,4 +1,17 @@
 services:
+  mt5-bridge:
+    container_name: mt5_bridge
+    image: fake/mt5_bridge
+    build:
+      context: ./bridge
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "8000:8000"
+      - "8765:8765"
+    networks:
+      - mt5net
+
   mt5:
     platform: linux/amd64
     container_name: metatrader
@@ -16,7 +29,16 @@ services:
       - DISPLAY=:1
       - RESOLUTION=1280x800x24
     shm_size: "512m"
+    networks:
+      - mt5net
+    depends_on:
+      - mt5-bridge
 
 volumes:
   mt5_wine:
     name: metatrader-wine
+
+networks:
+  mt5net:
+    name: mt5-network
+    driver: bridge
