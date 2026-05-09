@@ -18,11 +18,14 @@ async def tcp_handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
             if not chunk:
                 break
             buffer += chunk
-            try:
-                latest_data = json.loads(buffer.decode("utf-8"))
-                buffer = b""
-            except json.JSONDecodeError:
-                pass
+            # Parse all complete JSON objects from the buffer (handles concatenated messages)
+            while buffer:
+                try:
+                    obj, idx = json.JSONDecoder().raw_decode(buffer.decode("utf-8"))
+                    latest_data = obj
+                    buffer = buffer[idx:].lstrip()
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    break
     except Exception:
         pass
     finally:
