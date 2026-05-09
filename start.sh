@@ -8,6 +8,15 @@ export WINEESYNC=1
 
 sleep 3
 
+# Resolve mt5-bridge hostname and inject into /etc/hosts for Wine compatibility
+BRIDGE_IP=$(getent hosts mt5-bridge | awk '{print $1}')
+if [ -n "$BRIDGE_IP" ]; then
+    grep -q "mt5-bridge" /etc/hosts || echo "$BRIDGE_IP mt5-bridge" >> /etc/hosts
+    echo "[start] Resolved mt5-bridge -> $BRIDGE_IP"
+else
+    echo "[start] WARNING: Could not resolve mt5-bridge hostname"
+fi
+
 MT5_EXE="$WINEPREFIX/drive_c/Program Files/MetaTrader 5/terminal64.exe"
 
 if [ ! -f "$MT5_EXE" ]; then
@@ -38,6 +47,16 @@ EXPERTS_DIR="$WINEPREFIX/drive_c/Program Files/MetaTrader 5/MQL5/Experts"
 mkdir -p "$EXPERTS_DIR"
 cp /root/DataPublisher.mq5 "$EXPERTS_DIR/DataPublisher.mq5"
 echo "[start] DataPublisher.mq5 deployed to Experts folder"
+
+echo "[start] Waiting for mt5-bridge:8765 to be ready..."
+for i in $(seq 1 20); do
+    if bash -c "echo > /dev/tcp/mt5-bridge/8765" 2>/dev/null; then
+        echo "[start] mt5-bridge:8765 is ready"
+        break
+    fi
+    echo "[start] Waiting... ($i/20)"
+    sleep 3
+done
 
 echo "[start] Launching MT5..."
 exec wine "$MT5_EXE" 2>/dev/null
