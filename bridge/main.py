@@ -26,7 +26,7 @@ async def broadcast_data(data: dict):
             await connection.send_text(message)
         except Exception as e:
             logger.error(f"[WS] Broadcast error: {e}")
-            active_connections.remove(connection)
+            active_connections.discard(connection)
 
 
 async def tcp_handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -78,12 +78,11 @@ async def websocket_endpoint(websocket: WebSocket):
             # Stay connected
             await websocket.receive_text()
     except WebSocketDisconnect:
-        active_connections.remove(websocket)
+        active_connections.discard(websocket)
         logger.info(f"[WS] Client disconnected")
     except Exception as e:
         logger.error(f"[WS] Error: {e}")
-        if websocket in active_connections:
-            active_connections.remove(websocket)
+        active_connections.discard(websocket)
 
 
 @app.get("/ticks")
@@ -103,6 +102,7 @@ async def push_ticks(request: Request):
     except Exception as e:
         logger.error(f"[HTTP] /push failed to parse body: {e}")
         return JSONResponse({"error": f"invalid JSON: {e}"}, status_code=400)
+    await broadcast_data(latest_data)
     return {"ok": True}
 
 
