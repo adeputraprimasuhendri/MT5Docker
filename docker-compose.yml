@@ -29,12 +29,16 @@ services:
       - "8765:8765"
     networks:
       - mt5net
+    volumes:
+      - mt5_history:/data
     depends_on:
       - mt5
 
 volumes:
   mt5_wine:
     name: mt5-novnc_mt5_wine
+  mt5_history:
+    name: mt5-novnc_mt5_history
 
 networks:
   mt5net:

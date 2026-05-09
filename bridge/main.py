@@ -1,5 +1,7 @@
 import asyncio
 import json
+import sqlite3
+import os
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -7,6 +9,31 @@ import uvicorn
 app = FastAPI(title="MT5 Bridge")
 
 latest_data: dict = {}
+
+DB_PATH = os.environ.get("DB_PATH", "/data/history.db")
+
+
+def init_db():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS ohlcv (
+            symbol    TEXT    NOT NULL,
+            timeframe TEXT    NOT NULL,
+            time      INTEGER NOT NULL,
+            open      REAL    NOT NULL,
+            high      REAL    NOT NULL,
+            low       REAL    NOT NULL,
+            close     REAL    NOT NULL,
+            volume    INTEGER NOT NULL,
+            PRIMARY KEY (symbol, timeframe, time)
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+init_db()
 
 
 class ConnectionManager:
@@ -117,6 +144,61 @@ def get_tick(symbol: str):
         if t.get("symbol", "").upper() == symbol.upper():
             return JSONResponse(t)
     return JSONResponse({"error": "symbol not found"}, status_code=404)
+
+
+@app.post("/history")
+async def push_history(request: Request):
+    data = await request.json()
+    symbol = data.get("symbol", "").upper()
+    timeframe = data.get("timeframe", "").upper()
+    bars = data.get("bars", [])
+    if not symbol or not timeframe or not bars:
+        return JSONResponse({"error": "symbol, timeframe, bars required"}, status_code=400)
+    conn = sqlite3.connect(DB_PATH)
+    conn.executemany(
+        "INSERT OR REPLACE INTO ohlcv (symbol, timeframe, time, open, high, low, close, volume) VALUES (?,?,?,?,?,?,?,?)",
+        [(symbol, timeframe, b["time"], b["open"], b["high"], b["low"], b["close"], b.get("volume", 0)) for b in bars],
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True, "symbol": symbol, "timeframe": timeframe, "inserted": len(bars)}
+
+
+@app.get("/history/{symbol}/{timeframe}")
+def get_history(symbol: str, timeframe: str, limit: int = 1000, from_time: int = 0, to_time: int = 0):
+    conn = sqlite3.connect(DB_PATH)
+    query = "SELECT time, open, high, low, close, volume FROM ohlcv WHERE symbol=? AND timeframe=?"
+    params: list = [symbol.upper(), timeframe.upper()]
+    if from_time:
+        query += " AND time >= ?"
+        params.append(from_time)
+    if to_time:
+        query += " AND time <= ?"
+        params.append(to_time)
+    query += " ORDER BY time ASC LIMIT ?"
+    params.append(limit)
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return {
+        "symbol": symbol.upper(),
+        "timeframe": timeframe.upper(),
+        "count": len(rows),
+        "bars": [{"time": r[0], "open": r[1], "high": r[2], "low": r[3], "close": r[4], "volume": r[5]} for r in rows],
+    }
+
+
+@app.get("/history/{symbol}")
+def list_history_timeframes(symbol: str):
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute(
+        "SELECT timeframe, COUNT(*) as bars, MIN(time) as from_time, MAX(time) as to_time FROM ohlcv WHERE symbol=? GROUP BY timeframe",
+        [symbol.upper()],
+    ).fetchall()
+    conn.close()
+    return {
+        "symbol": symbol.upper(),
+        "timeframes": [{"timeframe": r[0], "bars": r[1], "from": r[2], "to": r[3]} for r in rows],
+    }
 
 
 @app.websocket("/ws/ticks")
