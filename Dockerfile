@@ -24,6 +24,8 @@ RUN dpkg --add-architecture i386 && \
     && apt-get install -y --install-recommends winehq-staging \
     && rm -rf /var/lib/apt/lists/*
 
+RUN pip3 install websocket-client pillow
+
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY start.sh /start.sh
 COPY init_wine.sh /init_wine.sh
