@@ -48,6 +48,13 @@ mkdir -p "$EXPERTS_DIR"
 cp /root/DataPublisher.mq5 "$EXPERTS_DIR/DataPublisher.mq5"
 echo "[start] DataPublisher.mq5 deployed to Experts folder"
 
+METAEDITOR_EXE="$WINEPREFIX/drive_c/Program Files/MetaTrader 5/metaeditor64.exe"
+if [ -f "$METAEDITOR_EXE" ]; then
+    echo "[start] Compiling DataPublisher.mq5..."
+    wine "$METAEDITOR_EXE" /compile:"$EXPERTS_DIR/DataPublisher.mq5" /log
+    echo "[start] Compilation finished"
+fi
+
 echo "[start] Waiting for mt5-bridge:8765 to be ready..."
 for i in $(seq 1 20); do
     if bash -c "echo > /dev/tcp/mt5-bridge/8765" 2>/dev/null; then

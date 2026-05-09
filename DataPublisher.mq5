@@ -5,7 +5,7 @@
 #property version   "1.00"
 #property strict
 
-input string   ServerHost = "127.0.0.1";
+input string   ServerHost = "mt5-bridge";
 input int      ServerPort = 8765;
 input string   Symbol1    = "EURUSD";
 input string   Symbol2    = "GBPUSD";

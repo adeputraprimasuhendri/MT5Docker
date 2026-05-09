@@ -3,7 +3,7 @@ import json
 import threading
 import time
 
-WS_URL = "ws://localhost:8765"
+WS_URL = "ws://localhost:8000/ws"
 
 class MT5WSClient:
     def __init__(self, url=WS_URL):

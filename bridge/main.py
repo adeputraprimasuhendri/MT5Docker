@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 import uvicorn
 
@@ -14,6 +14,19 @@ logger = logging.getLogger("mt5-bridge")
 app = FastAPI(title="MT5 Bridge")
 
 latest_data: dict = {}
+active_connections: set[WebSocket] = set()
+
+
+async def broadcast_data(data: dict):
+    if not active_connections:
+        return
+    message = json.dumps(data)
+    for connection in list(active_connections):
+        try:
+            await connection.send_text(message)
+        except Exception as e:
+            logger.error(f"[WS] Broadcast error: {e}")
+            active_connections.remove(connection)
 
 
 async def tcp_handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -27,13 +40,13 @@ async def tcp_handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
             if not chunk:
                 break
             buffer += chunk
-            # Parse all complete JSON objects from the buffer (handles concatenated messages)
             while buffer:
                 try:
                     obj, idx = json.JSONDecoder().raw_decode(buffer.decode("utf-8"))
                     latest_data = obj
                     buffer = buffer[idx:].lstrip()
                     logger.info(f"[TCP] Data received from {addr}: {obj}")
+                    await broadcast_data(obj)
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     break
     except Exception as e:
@@ -55,6 +68,24 @@ async def log_requests(request: Request, call_next):
 @app.get("/")
 def root():
     return {"status": "ok", "service": "mt5-bridge"}
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    active_connections.add(websocket)
+    logger.info(f"[WS] New connection from {websocket.client}")
+    try:
+        while True:
+            # Stay connected
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        active_connections.remove(websocket)
+        logger.info(f"[WS] Client disconnected")
+    except Exception as e:
+        logger.error(f"[WS] Error: {e}")
+        if websocket in active_connections:
+            active_connections.remove(websocket)
 
 
 @app.get("/ticks")
