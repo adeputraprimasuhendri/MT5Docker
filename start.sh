@@ -33,5 +33,11 @@ if [ ! -f "$MT5_EXE" ]; then
     exit 1
 fi
 
+# Deploy DataPublisher EA into MT5 Experts folder
+EXPERTS_DIR="$WINEPREFIX/drive_c/Program Files/MetaTrader 5/MQL5/Experts"
+mkdir -p "$EXPERTS_DIR"
+cp /root/DataPublisher.mq5 "$EXPERTS_DIR/DataPublisher.mq5"
+echo "[start] DataPublisher.mq5 deployed to Experts folder"
+
 echo "[start] Launching MT5..."
 exec wine "$MT5_EXE" 2>/dev/null
