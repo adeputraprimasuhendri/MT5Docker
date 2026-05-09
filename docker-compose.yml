@@ -1,0 +1,21 @@
+services:
+  mt5:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fake/metatrader
+    restart: unless-stopped
+    ports:
+      - "5900:5900"
+      - "6080:6080"
+    volumes:
+      - mt5_wine:/root/.wine
+    environment:
+      - DISPLAY=:1
+      - RESOLUTION=1280x800x24
+    shm_size: "512m"
+
+volumes:
+  mt5_wine:
+    name: metatrader-wine

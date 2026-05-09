@@ -1,0 +1,28 @@
+---
+kind: pipeline
+type: exec
+name: Development Pipeline Exec
+
+platform:
+  os: linux
+  arch: amd64
+
+trigger:
+  branch:
+    - development
+
+node:
+  env: dev
+
+steps:
+  - name: docker build
+    commands:
+      - docker compose -f docker-compose.yml build
+
+  - name: docker deploy
+    commands:
+      - docker compose -f docker-compose.yml up -d
+
+  - name: docker clean
+    commands:
+      - docker system prune -a --volumes -f
