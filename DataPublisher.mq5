@@ -75,23 +75,29 @@ void OnTimer()
             symbols[i], tick.bid, tick.ask, (int)tick.time
          );
          count++;
+      } else {
+         static datetime last_err_time = 0;
+         if (TimeCurrent() - last_err_time > 60) {
+            Print("Warning: Symbol ", symbols[i], " not found or no data. Make sure it is in Market Watch.");
+            last_err_time = TimeCurrent();
+         }
       }
    }
-   payload += "]}";
+   payload += "]";
+   
+   // Add heartbeat info
+   payload += StringFormat(",\"heartbeat\":%d}", (int)TimeCurrent());
 
-   if (count > 0) {
-      uchar data[];
-      // We don't want the null terminator in the JSON stream
-      int len = StringLen(payload);
-      ArrayResize(data, len);
-      StringToCharArray(payload, data, 0, len);
-      
-      int sent = SocketSend(socket, data, len);
-      if (sent <= 0) {
-         Print("Send failed, closing socket");
-         SocketClose(socket);
-         socket = INVALID_HANDLE;
-      }
+   uchar data[];
+   int len = StringLen(payload);
+   ArrayResize(data, len);
+   StringToCharArray(payload, data, 0, len);
+   
+   int sent = SocketSend(socket, data, len);
+   if (sent <= 0) {
+      Print("Send failed, closing socket");
+      SocketClose(socket);
+      socket = INVALID_HANDLE;
    }
 }
 
