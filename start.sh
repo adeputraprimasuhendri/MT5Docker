@@ -51,22 +51,31 @@ mkdir -p "$EXPERTS_DIR"
 cp /root/DataPublisher.mq5 "$EXPERTS_DIR/DataPublisher.mq5"
 echo "[start] DataPublisher.mq5 deployed to $EXPERTS_DIR"
 
-if [ -f "$METAEDITOR_EXE" ]; then
-    echo "[start] Compiling DataPublisher.mq5..."
+# Fallback: if not at standard path, search for it
+if [ ! -f "$METAEDITOR_EXE" ]; then
+    echo "[start] Searching for metaeditor64.exe..."
+    METAEDITOR_EXE=$(find "$WINEPREFIX/drive_c" -name "metaeditor64.exe" | head -n 1)
+fi
+
+if [ -n "$METAEDITOR_EXE" ] && [ -f "$METAEDITOR_EXE" ]; then
+    echo "[start] Compiling DataPublisher.mq5 using $METAEDITOR_EXE..."
+    # Clear old log and compile
+    rm -f "$EXPERTS_DIR/compile.log"
     wine "$METAEDITOR_EXE" /compile:"$EXPERTS_DIR/DataPublisher.mq5" /log:"$EXPERTS_DIR/compile.log"
-    sleep 2
+    
+    # Wait for log file and print it
+    for i in $(seq 1 10); do
+        [ -f "$EXPERTS_DIR/compile.log" ] && break
+        sleep 1
+    done
     if [ -f "$EXPERTS_DIR/compile.log" ]; then
         cat "$EXPERTS_DIR/compile.log"
+    else
+        echo "[start] Compilation triggered, but no log found."
     fi
-    echo "[start] Compilation finished"
+    echo "[start] Compilation process finished"
 else
-    echo "[start] ERROR: metaeditor64.exe not found at $METAEDITOR_EXE"
-    # Fallback find
-    METAEDITOR_EXE=$(find "$WINEPREFIX/drive_c" -name "metaeditor64.exe" | head -n 1)
-    if [ -n "$METAEDITOR_EXE" ]; then
-        echo "[start] Found MetaEditor at $METAEDITOR_EXE, compiling..."
-        wine "$METAEDITOR_EXE" /compile:"$EXPERTS_DIR/DataPublisher.mq5" /log:"$EXPERTS_DIR/compile.log"
-    fi
+    echo "[start] ERROR: metaeditor64.exe NOT FOUND anywhere!"
 fi
 
 echo "[start] Waiting for mt5-bridge:8765 to be ready..."

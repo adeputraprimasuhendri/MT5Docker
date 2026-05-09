@@ -39,6 +39,7 @@ async def tcp_handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
             chunk = await reader.read(4096)
             if not chunk:
                 break
+            logger.info(f"[TCP] Received raw chunk: {chunk}")
             buffer += chunk
             while buffer:
                 try:
