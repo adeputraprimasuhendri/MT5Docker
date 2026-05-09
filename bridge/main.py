@@ -1,6 +1,5 @@
 import asyncio
 import json
-import websockets
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -8,22 +7,32 @@ import uvicorn
 app = FastAPI(title="MT5 Bridge")
 
 latest_data: dict = {}
-clients: set = set()
+
+TCP_HOST = "0.0.0.0"
+TCP_PORT = 8765
 
 
-async def ws_server(websocket):
+async def tcp_handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     global latest_data
-    clients.add(websocket)
+    buf = b""
     try:
-        async for message in websocket:
-            try:
-                latest_data = json.loads(message)
-            except Exception:
-                pass
-    except websockets.exceptions.ConnectionClosed:
+        while True:
+            chunk = await reader.read(4096)
+            if not chunk:
+                break
+            buf += chunk
+            # A single send from MT5 may arrive in pieces; parse every complete JSON object
+            while buf:
+                try:
+                    obj = json.loads(buf.decode("utf-8", errors="replace").strip())
+                    latest_data = obj
+                    buf = b""
+                except json.JSONDecodeError:
+                    break
+    except (ConnectionResetError, asyncio.IncompleteReadError):
         pass
     finally:
-        clients.discard(websocket)
+        writer.close()
 
 
 @app.get("/")
@@ -45,13 +54,14 @@ def get_tick(symbol: str):
     return JSONResponse({"error": "symbol not found"}, status_code=404)
 
 
-async def start_ws():
-    async with websockets.serve(ws_server, "0.0.0.0", 8765):
-        await asyncio.Future()
+async def start_tcp():
+    server = await asyncio.start_server(tcp_handler, TCP_HOST, TCP_PORT)
+    async with server:
+        await server.serve_forever()
 
 
 async def main():
-    ws_task = asyncio.create_task(start_ws())
+    ws_task = asyncio.create_task(start_tcp())
     config = uvicorn.Config(app, host="0.0.0.0", port=8000, log_level="info")
     server = uvicorn.Server(config)
     await asyncio.gather(ws_task, server.serve())
