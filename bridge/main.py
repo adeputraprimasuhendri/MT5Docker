@@ -1,6 +1,6 @@
 import asyncio
 import json
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import uvicorn
 
@@ -8,28 +8,22 @@ app = FastAPI(title="MT5 Bridge")
 
 latest_data: dict = {}
 
-TCP_HOST = "0.0.0.0"
-TCP_PORT = 8765
-
 
 async def tcp_handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     global latest_data
-    buf = b""
+    buffer = b""
     try:
         while True:
             chunk = await reader.read(4096)
             if not chunk:
                 break
-            buf += chunk
-            # A single send from MT5 may arrive in pieces; parse every complete JSON object
-            while buf:
-                try:
-                    obj = json.loads(buf.decode("utf-8", errors="replace").strip())
-                    latest_data = obj
-                    buf = b""
-                except json.JSONDecodeError:
-                    break
-    except (ConnectionResetError, asyncio.IncompleteReadError):
+            buffer += chunk
+            try:
+                latest_data = json.loads(buffer.decode("utf-8"))
+                buffer = b""
+            except json.JSONDecodeError:
+                pass
+    except Exception:
         pass
     finally:
         writer.close()
@@ -45,6 +39,16 @@ def get_ticks():
     return JSONResponse(latest_data)
 
 
+@app.post("/push")
+async def push_ticks(request: Request):
+    global latest_data
+    try:
+        latest_data = await request.json()
+    except Exception:
+        pass
+    return {"ok": True}
+
+
 @app.get("/tick/{symbol}")
 def get_tick(symbol: str):
     ticks = latest_data.get("ticks", [])
@@ -54,17 +58,12 @@ def get_tick(symbol: str):
     return JSONResponse({"error": "symbol not found"}, status_code=404)
 
 
-async def start_tcp():
-    server = await asyncio.start_server(tcp_handler, TCP_HOST, TCP_PORT)
-    async with server:
-        await server.serve_forever()
-
-
 async def main():
-    ws_task = asyncio.create_task(start_tcp())
+    tcp_server = await asyncio.start_server(tcp_handler, "0.0.0.0", 8765)
     config = uvicorn.Config(app, host="0.0.0.0", port=8000, log_level="info")
     server = uvicorn.Server(config)
-    await asyncio.gather(ws_task, server.serve())
+    async with tcp_server:
+        await asyncio.gather(tcp_server.serve_forever(), server.serve())
 
 
 if __name__ == "__main__":
