@@ -46,13 +46,18 @@ fi
 EXPERTS_DIR="$WINEPREFIX/drive_c/Program Files/MetaTrader 5/MQL5/Experts"
 mkdir -p "$EXPERTS_DIR"
 cp /root/DataPublisher.mq5 "$EXPERTS_DIR/DataPublisher.mq5"
-echo "[start] DataPublisher.mq5 deployed to Experts folder"
+echo "[start] DataPublisher.mq5 deployed to $EXPERTS_DIR"
 
-METAEDITOR_EXE="$WINEPREFIX/drive_c/Program Files/MetaTrader 5/metaeditor64.exe"
-if [ -f "$METAEDITOR_EXE" ]; then
-    echo "[start] Compiling DataPublisher.mq5..."
-    wine "$METAEDITOR_EXE" /compile:"$EXPERTS_DIR/DataPublisher.mq5" /log
+# Try to find metaeditor64.exe in common locations
+METAEDITOR_EXE=$(find "$WINEPREFIX/drive_c/Program Files" -name "metaeditor64.exe" | head -n 1)
+
+if [ -n "$METAEDITOR_EXE" ]; then
+    echo "[start] Compiling DataPublisher.mq5 using $METAEDITOR_EXE..."
+    wine "$METAEDITOR_EXE" /compile:"$EXPERTS_DIR/DataPublisher.mq5" /log:"$EXPERTS_DIR/compile.log"
+    cat "$EXPERTS_DIR/compile.log"
     echo "[start] Compilation finished"
+else
+    echo "[start] ERROR: metaeditor64.exe not found!"
 fi
 
 echo "[start] Waiting for mt5-bridge:8765 to be ready..."

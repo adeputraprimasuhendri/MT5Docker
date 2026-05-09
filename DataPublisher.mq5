@@ -24,18 +24,7 @@ int OnInit()
    symbols[1] = Symbol2;
    symbols[2] = Symbol3;
 
-   socket = SocketCreate();
-   if (socket == INVALID_HANDLE) {
-      Print("Failed to create socket");
-      return INIT_FAILED;
-   }
-
-   if (!SocketConnect(socket, ServerHost, ServerPort, 5000)) {
-      Print("Cannot connect to bridge: ", ServerHost, ":", ServerPort);
-   } else {
-      Print("Connected to bridge");
-   }
-
+   // Socket creation and connection moved to OnTimer to avoid INIT_FAILED/4014 issues
    EventSetMillisecondTimer(500);
    return INIT_SUCCEEDED;
 }
@@ -49,6 +38,12 @@ void OnDeinit(const int reason)
 
 void OnTimer()
 {
+   if (!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED)) {
+      static bool warned = false;
+      if (!warned) { Print("Waiting for Algo Trading to be enabled..."); warned = true; }
+      return;
+   }
+
    if (socket == INVALID_HANDLE || !SocketIsConnected(socket)) {
       if (socket != INVALID_HANDLE) SocketClose(socket);
       socket = SocketCreate();
