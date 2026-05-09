@@ -1,19 +1,15 @@
 //+------------------------------------------------------------------+
-//| DataPublisher.mq5 - Publishes tick/bar data via WebSocket       |
+//| DataPublisher.mq5 - Publishes tick data via HTTP POST           |
 //+------------------------------------------------------------------+
 #property copyright "MT5 Bridge"
-#property version   "1.00"
+#property version   "2.00"
 #property strict
 
-input string   ServerHost = "mt5-bridge";
-input int      ServerPort = 8765;
-input string   Symbol1    = "EURUSD";
-input string   Symbol2    = "GBPUSD";
-input string   Symbol3    = "USDJPY";
+input string BridgeURL  = "http://127.0.0.1:8000/push";
+input string Symbol1    = "EURUSD";
+input string Symbol2    = "XAUUSD";
+input string Symbol3    = "BTCUSD";
 
-#include <Trade\Trade.mqh>
-
-int socket = INVALID_HANDLE;
 string symbols[];
 
 int OnInit()
@@ -24,76 +20,50 @@ int OnInit()
    symbols[1] = Symbol2;
    symbols[2] = Symbol3;
 
-   // Socket creation and connection moved to OnTimer to avoid INIT_FAILED/4014 issues
    EventSetMillisecondTimer(500);
+   Print("DataPublisher started, posting to: ", BridgeURL);
    return INIT_SUCCEEDED;
 }
 
 void OnDeinit(const int reason)
 {
    EventKillTimer();
-   if (socket != INVALID_HANDLE)
-      SocketClose(socket);
 }
 
 void OnTimer()
 {
-   if (!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED)) {
-      static bool warned = false;
-      if (!warned) { Print("Waiting for Algo Trading to be enabled..."); warned = true; }
-      return;
-   }
-
-   if (socket == INVALID_HANDLE || !SocketIsConnected(socket)) {
-      if (socket != INVALID_HANDLE) SocketClose(socket);
-      socket = SocketCreate();
-      if (socket != INVALID_HANDLE) {
-         if (SocketConnect(socket, ServerHost, ServerPort, 1000)) {
-            Print("Connected to bridge");
-         } else {
-            Print("Connection failed: ", GetLastError());
-            SocketClose(socket);
-            socket = INVALID_HANDLE;
-         }
-      }
-      return;
-   }
-
    string payload = "{\"ticks\":[";
-   int count = 0;
+   bool first = true;
    for (int i = 0; i < ArraySize(symbols); i++) {
       MqlTick tick;
       if (SymbolInfoTick(symbols[i], tick)) {
-         if (count > 0) payload += ",";
+         if (!first) payload += ",";
          payload += StringFormat(
-            "{\"symbol\":\"%s\",\"bid\":%.5f,\"ask\":%.5f,\"time\":%d}",
+            "{\"symbol\":\"%s\",\"bid\":%.2f,\"ask\":%.2f,\"time\":%d}",
             symbols[i], tick.bid, tick.ask, (int)tick.time
          );
-         count++;
-      } else {
-         static datetime last_err_time = 0;
-         if (TimeCurrent() - last_err_time > 60) {
-            Print("Warning: Symbol ", symbols[i], " not found or no data. Make sure it is in Market Watch.");
-            last_err_time = TimeCurrent();
-         }
+         first = false;
       }
    }
-   payload += "]";
-   
-   // Add heartbeat info
-   payload += StringFormat(",\"heartbeat\":%d}", (int)TimeCurrent());
+   payload += "]}";
 
-   uchar data[];
-   int len = StringLen(payload);
-   ArrayResize(data, len);
-   StringToCharArray(payload, data, 0, len);
-   
-   int sent = SocketSend(socket, data, len);
-   if (sent <= 0) {
-      Print("Send failed, closing socket");
-      SocketClose(socket);
-      socket = INVALID_HANDLE;
-   }
+   char post_data[];
+   char result[];
+   string response_headers;
+   StringToCharArray(payload, post_data, 0, StringLen(payload));
+
+   int res = WebRequest(
+      "POST",
+      BridgeURL,
+      "Content-Type: application/json\r\n",
+      3000,
+      post_data,
+      result,
+      response_headers
+   );
+
+   if (res == -1)
+      Print("WebRequest failed, error: ", GetLastError(), " - Add ", BridgeURL, " to MT5 Options > Expert Advisors");
 }
 
 void OnTick() {}
