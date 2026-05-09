@@ -51,9 +51,9 @@ async def tcp_handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
                     break
     except Exception as e:
         logger.error(f"[TCP] Error from {addr}: {e}")
-    finally:
-        logger.info(f"[TCP] Client disconnected: {addr}")
-        writer.close()
+#     finally:
+#         logger.info(f"[TCP] Client disconnected: {addr}")
+#         writer.close()
 
 
 @app.middleware("http")
