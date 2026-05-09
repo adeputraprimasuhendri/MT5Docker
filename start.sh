@@ -42,22 +42,31 @@ if [ ! -f "$MT5_EXE" ]; then
     exit 1
 fi
 
+# Define MetaEditor path clearly
+METAEDITOR_EXE="${MT5_EXE%/*}/metaeditor64.exe"
+
 # Deploy DataPublisher EA into MT5 Experts folder
 EXPERTS_DIR="$WINEPREFIX/drive_c/Program Files/MetaTrader 5/MQL5/Experts"
 mkdir -p "$EXPERTS_DIR"
 cp /root/DataPublisher.mq5 "$EXPERTS_DIR/DataPublisher.mq5"
 echo "[start] DataPublisher.mq5 deployed to $EXPERTS_DIR"
 
-# Try to find metaeditor64.exe in common locations
-METAEDITOR_EXE=$(find "$WINEPREFIX/drive_c/Program Files" -name "metaeditor64.exe" | head -n 1)
-
-if [ -n "$METAEDITOR_EXE" ]; then
-    echo "[start] Compiling DataPublisher.mq5 using $METAEDITOR_EXE..."
+if [ -f "$METAEDITOR_EXE" ]; then
+    echo "[start] Compiling DataPublisher.mq5..."
     wine "$METAEDITOR_EXE" /compile:"$EXPERTS_DIR/DataPublisher.mq5" /log:"$EXPERTS_DIR/compile.log"
-    cat "$EXPERTS_DIR/compile.log"
+    sleep 2
+    if [ -f "$EXPERTS_DIR/compile.log" ]; then
+        cat "$EXPERTS_DIR/compile.log"
+    fi
     echo "[start] Compilation finished"
 else
-    echo "[start] ERROR: metaeditor64.exe not found!"
+    echo "[start] ERROR: metaeditor64.exe not found at $METAEDITOR_EXE"
+    # Fallback find
+    METAEDITOR_EXE=$(find "$WINEPREFIX/drive_c" -name "metaeditor64.exe" | head -n 1)
+    if [ -n "$METAEDITOR_EXE" ]; then
+        echo "[start] Found MetaEditor at $METAEDITOR_EXE, compiling..."
+        wine "$METAEDITOR_EXE" /compile:"$EXPERTS_DIR/DataPublisher.mq5" /log:"$EXPERTS_DIR/compile.log"
+    fi
 fi
 
 echo "[start] Waiting for mt5-bridge:8765 to be ready..."
