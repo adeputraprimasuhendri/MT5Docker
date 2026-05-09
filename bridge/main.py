@@ -165,7 +165,7 @@ async def push_history(request: Request):
 
 
 @app.get("/history/{symbol}/{timeframe}")
-def get_history(symbol: str, timeframe: str, limit: int = 1000, from_time: int = 0, to_time: int = 0):
+def get_history(symbol: str, timeframe: str, limit: int = 5000000, from_time: int = 0, to_time: int = 0):
     conn = sqlite3.connect(DB_PATH)
     query = "SELECT time, open, high, low, close, volume FROM ohlcv WHERE symbol=? AND timeframe=?"
     params: list = [symbol.upper(), timeframe.upper()]
@@ -175,7 +175,7 @@ def get_history(symbol: str, timeframe: str, limit: int = 1000, from_time: int =
     if to_time:
         query += " AND time <= ?"
         params.append(to_time)
-    query += " ORDER BY time ASC LIMIT ?"
+    query += " ORDER BY time DESC LIMIT ?"
     params.append(limit)
     rows = conn.execute(query, params).fetchall()
     conn.close()
