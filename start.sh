@@ -58,12 +58,12 @@ fi
 echo "[start] Waiting for mt5-bridge:8765 to be ready..."
 for i in $(seq 1 20); do
     if bash -c "echo > /dev/tcp/mt5-bridge/8765" 2>/dev/null; then
-        echo "[start] mt5-bridge:8765 is ready"
+        echo "[start] mt5-bridge:8765 is reachable"
         break
     fi
-    echo "[start] Waiting... ($i/20)"
+    echo "[start] Waiting for bridge... ($i/20)"
     sleep 3
 done
 
-echo "[start] Launching MT5..."
-exec wine "$MT5_EXE" 2>/dev/null
+echo "[start] Launching MT5 with config..."
+exec wine "$MT5_EXE" /config:/root/mt5_config.ini

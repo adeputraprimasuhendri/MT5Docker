@@ -31,6 +31,7 @@ COPY start.sh /start.sh
 COPY init_wine.sh /init_wine.sh
 COPY DataPublisher.mq5 /root/DataPublisher.mq5
 COPY mt5_ws_client.py /mt5_ws_client.py
+COPY mt5_config.ini /root/mt5_config.ini
 
 RUN chmod +x /start.sh /init_wine.sh
 

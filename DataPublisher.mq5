@@ -50,27 +50,49 @@ void OnDeinit(const int reason)
 void OnTimer()
 {
    if (socket == INVALID_HANDLE || !SocketIsConnected(socket)) {
+      if (socket != INVALID_HANDLE) SocketClose(socket);
       socket = SocketCreate();
-      SocketConnect(socket, ServerHost, ServerPort, 3000);
+      if (socket != INVALID_HANDLE) {
+         if (SocketConnect(socket, ServerHost, ServerPort, 1000)) {
+            Print("Connected to bridge");
+         } else {
+            Print("Connection failed: ", GetLastError());
+            SocketClose(socket);
+            socket = INVALID_HANDLE;
+         }
+      }
       return;
    }
 
    string payload = "{\"ticks\":[";
+   int count = 0;
    for (int i = 0; i < ArraySize(symbols); i++) {
       MqlTick tick;
       if (SymbolInfoTick(symbols[i], tick)) {
-         if (i > 0) payload += ",";
+         if (count > 0) payload += ",";
          payload += StringFormat(
             "{\"symbol\":\"%s\",\"bid\":%.5f,\"ask\":%.5f,\"time\":%d}",
             symbols[i], tick.bid, tick.ask, (int)tick.time
          );
+         count++;
       }
    }
    payload += "]}";
 
-   uchar data[];
-   StringToCharArray(payload, data, 0, StringLen(payload));
-   SocketSend(socket, data, ArraySize(data));
+   if (count > 0) {
+      uchar data[];
+      // We don't want the null terminator in the JSON stream
+      int len = StringLen(payload);
+      ArrayResize(data, len);
+      StringToCharArray(payload, data, 0, len);
+      
+      int sent = SocketSend(socket, data, len);
+      if (sent <= 0) {
+         Print("Send failed, closing socket");
+         SocketClose(socket);
+         socket = INVALID_HANDLE;
+      }
+   }
 }
 
 void OnTick() {}
