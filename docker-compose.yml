@@ -8,6 +8,7 @@ services:
     restart: always
     ports:
       - "28082:8000"
+      - "8765:8765"
     networks:
       - mt5net
 
