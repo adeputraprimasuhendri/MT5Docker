@@ -14,6 +14,23 @@ latest_data: dict = {}
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://alrca:M4tr!xD3b3@pg:5432/trade")
 
 
+TIMEFRAME_MAP = {
+    "D1": "1d",
+    "W1": "1w",
+    "MN1": "1M",
+    "M1": "1m",
+    "M5": "5m",
+    "M15": "15m",
+    "M30": "30m",
+    "H1": "1h",
+    "H4": "4h",
+}
+
+
+def normalize_timeframe(tf: str) -> str:
+    return TIMEFRAME_MAP.get(tf.upper(), tf)
+
+
 def get_conn():
     return psycopg2.connect(DATABASE_URL)
 
@@ -34,7 +51,7 @@ def init_db():
                 volume     double precision,
                 created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
                 updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
-                period     varchar(10) NOT NULL DEFAULT '1D',
+                period     varchar(10) NOT NULL DEFAULT '1d',
                 CONSTRAINT unique_ticker_timestamp_period UNIQUE (ticker, timestamp, period)
             )
         """)
@@ -157,7 +174,7 @@ def get_tick(symbol: str):
 async def push_history(request: Request):
     data = await request.json()
     symbol = data.get("symbol", "").upper()
-    timeframe = data.get("timeframe", "").upper()
+    timeframe = normalize_timeframe(data.get("timeframe", ""))
     bars = data.get("bars", [])
     if not symbol or not timeframe or not bars:
         return JSONResponse({"error": "symbol, timeframe, bars required"}, status_code=400)
