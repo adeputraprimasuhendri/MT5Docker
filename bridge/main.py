@@ -1,7 +1,8 @@
 import asyncio
 import json
-import sqlite3
 import os
+import psycopg2
+import psycopg2.extras
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -10,26 +11,33 @@ app = FastAPI(title="MT5 Bridge")
 
 latest_data: dict = {}
 
-DB_PATH = os.environ.get("DB_PATH", "/data/history.db")
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://alrca:M4tr!xD3b3@pg:5432/trade")
+
+
+def get_conn():
+    return psycopg2.connect(DATABASE_URL)
 
 
 def init_db():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS ohlcv (
-            symbol    TEXT    NOT NULL,
-            timeframe TEXT    NOT NULL,
-            time      INTEGER NOT NULL,
-            open      REAL    NOT NULL,
-            high      REAL    NOT NULL,
-            low       REAL    NOT NULL,
-            close     REAL    NOT NULL,
-            volume    INTEGER NOT NULL,
-            PRIMARY KEY (symbol, timeframe, time)
-        )
-    """)
-    conn.commit()
+    conn = get_conn()
+    conn.autocommit = True
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS market_data (
+                id         bigserial PRIMARY KEY,
+                timestamp  bigint NOT NULL,
+                ticker     varchar(20) NOT NULL,
+                open       double precision,
+                high       double precision,
+                low        double precision,
+                close      double precision,
+                volume     double precision,
+                created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+                updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+                period     varchar(10) NOT NULL DEFAULT '1D',
+                CONSTRAINT unique_ticker_timestamp_period UNIQUE (ticker, timestamp, period)
+            )
+        """)
     conn.close()
 
 
@@ -52,7 +60,6 @@ class ConnectionManager:
         if symbol:
             key = symbol.upper()
             if key in self.symbol_subs:
-                self.symbol_subs[key].discard(ws) if hasattr(self.symbol_subs[key], "discard") else None
                 try:
                     self.symbol_subs[key].remove(ws)
                 except ValueError:
@@ -154,31 +161,56 @@ async def push_history(request: Request):
     bars = data.get("bars", [])
     if not symbol or not timeframe or not bars:
         return JSONResponse({"error": "symbol, timeframe, bars required"}, status_code=400)
-    conn = sqlite3.connect(DB_PATH)
-    conn.executemany(
-        "INSERT OR REPLACE INTO ohlcv (symbol, timeframe, time, open, high, low, close, volume) VALUES (?,?,?,?,?,?,?,?)",
-        [(symbol, timeframe, b["time"], b["open"], b["high"], b["low"], b["close"], b.get("volume", 0)) for b in bars],
-    )
-    conn.commit()
-    conn.close()
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur,
+                """
+                INSERT INTO market_data (ticker, period, timestamp, open, high, low, close, volume)
+                VALUES %s
+                ON CONFLICT (ticker, timestamp, period) DO UPDATE SET
+                    open       = EXCLUDED.open,
+                    high       = EXCLUDED.high,
+                    low        = EXCLUDED.low,
+                    close      = EXCLUDED.close,
+                    volume     = EXCLUDED.volume,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                [
+                    (symbol, timeframe, b["time"], b["open"], b["high"], b["low"], b["close"], b.get("volume", 0))
+                    for b in bars
+                ],
+            )
+        conn.commit()
+    finally:
+        conn.close()
     return {"ok": True, "symbol": symbol, "timeframe": timeframe, "inserted": len(bars)}
 
 
 @app.get("/history/{symbol}/{timeframe}")
 def get_history(symbol: str, timeframe: str, limit: int = 5000000, from_time: int = 0, to_time: int = 0):
-    conn = sqlite3.connect(DB_PATH)
-    query = "SELECT time, open, high, low, close, volume FROM ohlcv WHERE symbol=? AND timeframe=?"
-    params: list = [symbol.upper(), timeframe.upper()]
-    if from_time:
-        query += " AND time >= ?"
-        params.append(from_time)
-    if to_time:
-        query += " AND time <= ?"
-        params.append(to_time)
-    query += " ORDER BY time DESC LIMIT ?"
-    params.append(limit)
-    rows = conn.execute(query, params).fetchall()
-    conn.close()
+    conn = get_conn()
+    try:
+        query = """
+            SELECT timestamp, open, high, low, close, volume
+            FROM market_data
+            WHERE ticker = %s AND period = %s
+        """
+        params: list = [symbol.upper(), timeframe.upper()]
+        if from_time:
+            query += " AND timestamp >= %s"
+            params.append(from_time)
+        if to_time:
+            query += " AND timestamp <= %s"
+            params.append(to_time)
+        query += " ORDER BY timestamp DESC LIMIT %s"
+        params.append(limit)
+        with conn.cursor() as cur:
+            cur.execute(query, params)
+            rows = cur.fetchall()
+    finally:
+        conn.close()
     return {
         "symbol": symbol.upper(),
         "timeframe": timeframe.upper(),
@@ -189,12 +221,21 @@ def get_history(symbol: str, timeframe: str, limit: int = 5000000, from_time: in
 
 @app.get("/history/{symbol}")
 def list_history_timeframes(symbol: str):
-    conn = sqlite3.connect(DB_PATH)
-    rows = conn.execute(
-        "SELECT timeframe, COUNT(*) as bars, MIN(time) as from_time, MAX(time) as to_time FROM ohlcv WHERE symbol=? GROUP BY timeframe",
-        [symbol.upper()],
-    ).fetchall()
-    conn.close()
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT period, COUNT(*) AS bars, MIN(timestamp) AS from_time, MAX(timestamp) AS to_time
+                FROM market_data
+                WHERE ticker = %s
+                GROUP BY period
+                """,
+                [symbol.upper()],
+            )
+            rows = cur.fetchall()
+    finally:
+        conn.close()
     return {
         "symbol": symbol.upper(),
         "timeframes": [{"timeframe": r[0], "bars": r[1], "from": r[2], "to": r[3]} for r in rows],
